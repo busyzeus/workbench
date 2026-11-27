@@ -1,0 +1,48 @@
+name: Publish Workbench to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag of the release containing the Workbench Pages package
+        required: true
+        type: string
+
+concurrency:
+  group: workbench-pages
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download the release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" \
+            --pattern workbench-pages.tar.gz --pattern workbench-pages.tar.gz.sha256 \
+            --dir "$RUNNER_TEMP/workbench" -- "$RELEASE_TAG"
+      - name: Verify and extract the Pages package
+        run: python3 scripts/unpack_pages.py "$RUNNER_TEMP/workbench" "$RUNNER_TEMP/site"
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/site
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
